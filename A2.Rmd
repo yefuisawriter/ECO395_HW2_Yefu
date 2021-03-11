@@ -1,0 +1,527 @@
+---
+title: "ECO 395 Homework 2"
+author: "Yefu Chen"
+date: "3/11/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## QUESTION 1
+**Your task in this problem is to make two faceted plots and to answer questions about them.**
+
+### A) One panel of line graphs that plots average boardings grouped by hour of the day, day of week, and month.
+
+```{r Q1 A, echo=FALSE,message=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+Q1A <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/data1.xlsx")
+Q1A = mutate(Q1A,day_of_week = factor(day_of_week,levels=c("Mon", "Tue", "Wed","Thu", "Fri", "Sat", "Sun")),
+             month = factor(month,levels=c("Sep", "Oct","Nov")))
+Q1A_group<-Q1A %>% 
+  group_by(hour_of_day, day_of_week,month) %>% 
+  summarise(average_usage = mean(boarding))
+ggplot(Q1A_group) +
+  geom_line(aes(x=hour_of_day, y=average_usage, color=month)) +
+  facet_wrap(~day_of_week)+
+  labs(title="Average usage by hours")
+```
+Caption: This figure presents the faceted plot for Question A. The hours of peak boardings do not change from days to days. It is similar among weekdays, from Monday to Friday. But the average usage changes a lot from weekdays to weekends. I also notice that average boardings on Mondays in September look lower, and average boardings on Weds/Thurs/Fri in November look lower. I assume 1) in September, students usually stay on campus to have reunions and "shop" courses. Hence there may not have a lot of public transit demand. 2) in November, students may prefer to stay on campus and prepare for the midterm/final exam. 
+
+### B) One panel of scatter plots showing boardings (y) vs. temperature (x) in each 15-minute window, faceted by hour of the day, and with points colored in according to whether it is a weekday or weekend.
+
+```{r Q1 B, echo=FALSE,message=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+Q1B <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/data1.xlsx")
+Q1B = mutate(Q1B,day_of_week = factor(day_of_week,levels=c("Mon", "Tue", "Wed","Thu", "Fri", "Sat", "Sun")),
+             month = factor(month,levels=c("Sep", "Oct","Nov")))
+Q1B_group<-Q1B %>% 
+  group_by(hour_of_day, weekend,temperature) %>% 
+  summarise(usage = sum(boarding))
+ggplot(Q1B_group) +
+  geom_point(aes(x=temperature, y=usage, color=weekend), alpha=0.1) +
+  facet_wrap(~hour_of_day)+
+  labs(title="Boardings (y) vs. Temperature (x)")
+```
+Caption: This figure is a sort of scatter plots showing boardings (y) vs. temperature (x) in each 15-minute window, faceted by hour of the day, and with points colored in according to whether it is a weekday (red) or weekend (green). Temperature seems not to have a noticeable effect on the number of UT students riding the bus.
+
+## QUESTION 2
+**For this data set, you'll run a "horse race" (i.e. a model comparison exercise) between two model classes: linear models and KNN.**
+
+Answers: After testing, there is a good linear model (RMSE= 61715.89). The independent variables of this model include waterfront (Y/N), new construction status (Y/N), central air status (Y/N), heating types, years of building, lot size, number of rooms, number of bathrooms, number of bedrooms, and (livingArea + landValue)^2. The positive indicators include living area, land value, number of bathrooms, new construction status, lot size, and number of rooms. The negative indicators include waterfront status, central air status, years of building, number of bedrooms, and heating types (stem and electric to hot air).
+Also, after testing, there is a good KNN regression (RMSE= 63676). The number of K is 7. 
+In this study, the linear model performs better than the KNN regression model. Also, the linear model is easier to interpret and understand to the public.
+
+```{r Q2 A, echo=FALSE,message=FALSE, results='hide'}
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(caret) 
+library(MASS)
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(rsample)
+library(mosaic)
+data(SaratogaHouses)
+SaratogaHouses=glimpse(SaratogaHouses)
+
+##LINEAR MODEL
+SaratogaHouses$heating=factor(SaratogaHouses$heating)
+SaratogaHouses$fuel=factor(SaratogaHouses$fuel)
+SaratogaHouses$sewer=factor(SaratogaHouses$sewer)
+SaratogaHouses$waterfront=factor(SaratogaHouses$waterfront)
+SaratogaHouses$newConstruction=factor(SaratogaHouses$newConstruction)
+SaratogaHouses$centralAir=factor(SaratogaHouses$centralAir)
+
+saratoga_split = initial_split(SaratogaHouses, prop = 0.7)
+saratoga_train = training(saratoga_split)
+saratoga_test = testing(saratoga_split)
+
+
+lm1 = lm(price ~ lotSize + bedrooms + bathrooms, data=saratoga_train)
+lm2 = lm(price ~ . , data=saratoga_train)
+
+empty <- lm(price ~ 1, 
+               data=saratoga_train)
+all.nb_best <- step(empty, trace=FALSE, direction="both",
+                   scope=list(upper=lm2, lower=empty))
+
+lm3=lm(price ~ (livingArea+landValue)^2 + waterfront + bathrooms + newConstruction + 
+    centralAir + age + lotSize + rooms + heating + bedrooms,data=saratoga_train)
+
+rmse(lm1, saratoga_test)
+rmse(lm2, saratoga_test)
+rmse(all.nb_best, saratoga_test)
+rmse(lm3, saratoga_test)
+
+```
+
+```{r Q2 B, echo=FALSE,message=FALSE, results='hide'}
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(caret)
+library(modelr)
+library(rsample)
+library(foreach)
+library(parallel)
+
+data(SaratogaHouses)
+glimpse(SaratogaHouses)
+SaratogaHouses$age=log(SaratogaHouses$age+1)
+SaratogaHouses$landValue=log(SaratogaHouses$landValue)
+SaratogaHouses$livingArea=log(SaratogaHouses$livingArea)
+
+K_folds = 20
+sclass350_folds = crossv_kfold(SaratogaHouses, k=K_folds)
+k_grid = seq(2, 20, by=1)
+
+cv_grid = foreach(k = k_grid, .combine='rbind') %do% {
+  models = map(sclass350_folds$train, ~ knnreg(price ~ ., k=k, data = ., use.all=FALSE))
+  errs = map2_dbl(models, sclass350_folds$test, modelr::rmse)
+  c(k=k, err = mean(errs), std_err = sd(errs)/sqrt(K_folds))
+} %>% as.data.frame
+
+summary(cv_grid$err)
+
+k_best = k_grid[which.min(cv_grid$err)]
+knn_best = knnreg(price ~ ., k=k_best, data = SaratogaHouses)
+k_best
+knn_best
+```
+
+## QUESTION 3 
+**What do you notice about the history variable vis-a-vis predicting defaults? What do you think is going on here? In light of what you see here, do you think this data set is appropriate for building a predictive model of defaults if the purpose of the model is to screen prospective borrowers to classify them into "high" versus "low" probability of default? Why or why not---and if not, would you recommend any changes to the bank's sampling scheme?**
+
+
+Answers: Figure 3-1 demonstrates the credit history vs. rates of fell into default. I notice that the rates of fell into default are higher in persons with good credit history than those with poor and terrible credit history. The results of logistic regression are consistent with this finding. The coefficient of credit history plays a negative role in predicting default status, which means that worse credit history can have lower rates of fell into default. Compared to good credit history persons, the odds of poor credit history felling into default decrease by 0.66, and the odds of a terrible credit history person decrease by 0.84.
+This result is not consistent with common sense that persons with good credit history tend to avoid default. One reason could be that when it is the first time to apply for a loan, individuals have a good credit history, while others may not repay the loan. Although this model has controlled the effects of age and purposes, it does not consider whether it is the first time apply for a loan. Hence, I do not think this dataset is appropriate for building a predictive model of defaults. I suggest that the bank consider the effects of first-time application to loan and separate the sample as a first-time group and multiple-times group. Also, the two hurdle model may be helpful in this prediction.
+
+```{r Q3 A, echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(dplyr)
+
+data3 <- read.csv("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/data3.csv")
+
+data3_group<-data3 %>% 
+  group_by(history) %>% 
+  summarise(rate = sum(Default)/length(Default),.groups = 'drop')
+
+ggplot(data3_group) +
+  geom_col(aes(x=history, y=rate))+
+  labs(y="Rates of fell into default", x="Credit history")
+
+```
+Figure 3-1. Credit history vs. Rates of fell into default
+
+```{r Q3 B, echo=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(dplyr)
+library(stargazer)
+library(pander)
+
+data3 <- read.csv("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/data3.csv")
+
+data3$Default=factor(data3$Default)
+data3$history=factor(data3$history, levels=c("good", "poor", "terrible"))
+data3$purpose=factor(data3$purpose)
+data3$foreign=factor(data3$foreign)
+
+
+logResult <- glm(Default ~ history+duration + amount + installment + age  + purpose + foreign, data = data3, family = "binomial")
+
+pander(summary(logResult))
+```
+
+## QUESTION 4
+**Model building**: Using only the data in hotels.dev.csv, please compare the out-of-sample performance of the following models.
+**Step 1**: Once you've built your best model and assessed its out-of-sample performance using hotels_dev, now turn to the data in hotels_val. 
+**Step 2**: Next, create 20 folds of hotels_val and make predictions.
+
+Since the RMSE is not applicable for binominal logisti regression, I use the accuracy as the index to quantify performance of models. My model is given by (children ~ reserved_room_type:meal + average_daily_rate + poly(total_of_special_requests,2) + assigned_room_type + market_segment + hotel +  poly(adults,3) + booking_changes + customer_type + previous_bookings_not_canceled + poly(lead_time,3) + distribution_channel + is_repeated_guest + poly(stays_in_weekend_nights,3) +required_car_parking_spaces +poly(days_in_waiting_list,3)). The accuracy is 0.864, better than baseline 1 (0.661) and 2 (0.847).
+
+Figure 4-1 present model validation step 1. It is a plot TPR(t) vs. FPR(t) as the classification threshold t=0.1, 0.5, 0.8.
+
+Figure 4-2 is a barplot about the actual number of children vs. the predicted number of children across 28 folders. We can see in folders 15, 16, and 19, the model performance relatively good. 
+
+```{r Q4 A, echo=FALSE,message=FALSE,warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(pROC)
+library(caret)
+library(Metrics)
+library(ROCR)
+library(pander)
+
+Q4_dev <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_dev.xlsx")
+
+Q4_dev$children=factor(Q4_dev$children)
+Q4_dev$is_repeated_guest=factor(Q4_dev$is_repeated_guest)
+
+Q4_dev_split = initial_split(Q4_dev, prop = 0.9)
+Q4_dev_train = training(Q4_dev_split)
+Q4_dev_test = testing(Q4_dev_split)
+
+glm1 = glm(children ~ market_segment + adults +customer_type
+           +is_repeated_guest,family=binomial(), data=Q4_dev_train)
+glm2 = glm(children ~. -arrival_date, family=binomial(),data=Q4_dev_train)
+
+glm3 = glm(children ~ 
+             reserved_room_type:meal + average_daily_rate + 
+             poly(total_of_special_requests,2) + assigned_room_type + market_segment + 
+             hotel +  poly(adults,3) + booking_changes + customer_type + 
+             previous_bookings_not_canceled + poly(lead_time,3) + distribution_channel + 
+             is_repeated_guest + poly(stays_in_weekend_nights,3) +
+             required_car_parking_spaces +
+             poly(days_in_waiting_list,3),family=binomial(), data=Q4_dev_train)
+
+log_predict1 <- predict(glm1,newdata = Q4_dev_test,type = "response") #0.661
+log_predict2 <- predict(glm2,newdata = Q4_dev_test,type = "response") #0.847
+log_predict3 <- predict(glm3,newdata = Q4_dev_test,type = "response") #0.864
+
+
+```
+
+```{r Q4 B, echo=FALSE,message=FALSE,warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(pROC)
+library(caret)
+library(Metrics)
+library(ROCR)
+
+
+Q4_dev <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_dev.xlsx")
+
+Q4_dev$children=factor(Q4_dev$children)
+Q4_dev$is_repeated_guest=factor(Q4_dev$is_repeated_guest)
+
+Q4_dev_split = initial_split(Q4_dev, prop = 0.9)
+Q4_dev_train = training(Q4_dev_split)
+Q4_dev_test = testing(Q4_dev_split)
+
+glm1 = glm(children ~ market_segment + adults +customer_type
+           +is_repeated_guest,family=binomial(), data=Q4_dev_train)
+glm2 = glm(children ~. -arrival_date, family=binomial(),data=Q4_dev_train)
+
+glm3 = glm(children ~ 
+             reserved_room_type:meal + average_daily_rate + 
+             poly(total_of_special_requests,2) + assigned_room_type + market_segment + 
+             hotel +  poly(adults,3) + booking_changes + customer_type + 
+             previous_bookings_not_canceled + poly(lead_time,3) + distribution_channel + 
+             is_repeated_guest + poly(stays_in_weekend_nights,3) +
+             required_car_parking_spaces +
+             poly(days_in_waiting_list,3),family=binomial(), data=Q4_dev_train)
+
+
+Q4_val <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_val.xlsx")
+Q4_val$children=factor(Q4_val$children)
+Q4_val$is_repeated_guest=factor(Q4_val$is_repeated_guest)
+
+log_predict <- predict(glm3,newdata = Q4_val,type = "response")
+log_predict1 <- ifelse(log_predict > 0.1,1,0)
+log_predict2 <- ifelse(log_predict > 0.5,1,0)
+log_predict3 <- ifelse(log_predict > 0.8,1,0)
+
+pr1 <- prediction(log_predict1,Q4_val$children)
+perf1 <- performance(pr1,measure = "tpr",x.measure = "fpr") 
+
+pr2 <- prediction(log_predict2,Q4_val$children)
+perf2 <- performance(pr2,measure = "tpr",x.measure = "fpr") 
+
+pr3 <- prediction(log_predict3,Q4_val$children)
+perf3 <- performance(pr3,measure = "tpr",x.measure = "fpr") 
+
+attach(mtcars)
+par(mfrow=c(3,1))
+plot(perf1, col="red", pch=19,main = "TPR vs. FPR (t=0.1)")
+plot(perf2, col="blue", pch=19,main = "TPR vs. FPR (t=0.5)")
+plot(perf3, col="green", pch=19,main = "TPR vs. FPR (t=0.8)")
+```
+Figure 4-1. TPR(t) vs. FPR(t) when t= 0.1, 0.5, and 0.8.
+
+```{r Q4 C, echo=FALSE,message=FALSE,warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(pROC)
+library(caret)
+library(Metrics)
+library(ROCR)
+
+
+Q4_dev <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_dev.xlsx")
+
+Q4_dev$children=factor(Q4_dev$children)
+Q4_dev$is_repeated_guest=factor(Q4_dev$is_repeated_guest)
+
+Q4_dev_split = initial_split(Q4_dev, prop = 0.9)
+Q4_dev_train = training(Q4_dev_split)
+Q4_dev_test = testing(Q4_dev_split)
+
+glm1 = glm(children ~ market_segment + adults +customer_type
+           +is_repeated_guest,family=binomial(), data=Q4_dev_train)
+glm2 = glm(children ~. -arrival_date, family=binomial(),data=Q4_dev_train)
+
+glm3 = glm(children ~ 
+             reserved_room_type:meal + average_daily_rate + 
+             poly(total_of_special_requests,2) + assigned_room_type + market_segment + 
+             hotel +  poly(adults,3) + booking_changes + customer_type + 
+             previous_bookings_not_canceled + poly(lead_time,3) + distribution_channel + 
+             is_repeated_guest + poly(stays_in_weekend_nights,3) +
+             required_car_parking_spaces +
+             poly(days_in_waiting_list,3),family=binomial(), data=Q4_dev_train)
+
+
+Q4_val <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_val.xlsx")
+Q4_val$children=factor(Q4_val$children)
+Q4_val$is_repeated_guest=factor(Q4_val$is_repeated_guest)
+
+Q4_val_1 <- Q4_val[1:250, ]  
+Q4_val_2 <- Q4_val[251:500, ] 
+Q4_val_3 <- Q4_val[501:750, ] 
+Q4_val_4 <- Q4_val[751:1000, ] 
+Q4_val_5 <- Q4_val[1001:1250, ] 
+Q4_val_6 <- Q4_val[1251:1500, ] 
+Q4_val_7 <- Q4_val[1501:1750, ] 
+Q4_val_8 <- Q4_val[1751:2000, ] 
+Q4_val_9 <- Q4_val[2001:2250, ] 
+Q4_val_10 <- Q4_val[2251:2500, ] 
+Q4_val_11 <- Q4_val[2501:2750, ] 
+Q4_val_12 <- Q4_val[2751:3000, ] 
+Q4_val_13 <- Q4_val[3001:3250, ] 
+Q4_val_14 <- Q4_val[3251:3500, ] 
+Q4_val_15 <- Q4_val[3501:3750, ] 
+Q4_val_16 <- Q4_val[3751:4000, ] 
+Q4_val_17 <- Q4_val[4001:4250, ] 
+Q4_val_18 <- Q4_val[4251:4500, ] 
+Q4_val_19 <- Q4_val[4501:4750, ] 
+Q4_val_20 <- Q4_val[4751:4999, ] 
+
+Q4_val_1$predict<- predict(glm3,Q4_val_1,type = "response")
+Q4_val_2$predict<- predict(glm3,Q4_val_2,type = "response")
+Q4_val_3$predict<- predict(glm3,Q4_val_3,type = "response")
+Q4_val_4$predict<- predict(glm3,Q4_val_4,type = "response")
+Q4_val_5$predict<- predict(glm3,Q4_val_5,type = "response")
+Q4_val_6$predict<- predict(glm3,Q4_val_6,type = "response")
+Q4_val_7$predict<- predict(glm3,Q4_val_7,type = "response")
+Q4_val_8$predict<- predict(glm3,Q4_val_8,type = "response")
+Q4_val_9$predict<- predict(glm3,Q4_val_9,type = "response")
+Q4_val_10$predict<- predict(glm3,Q4_val_10,type = "response")
+Q4_val_11$predict<- predict(glm3,Q4_val_11,type = "response")
+Q4_val_12$predict<- predict(glm3,Q4_val_12,type = "response")
+Q4_val_13$predict<- predict(glm3,Q4_val_13,type = "response")
+Q4_val_14$predict<- predict(glm3,Q4_val_14,type = "response")
+Q4_val_15$predict<- predict(glm3,Q4_val_15,type = "response")
+Q4_val_16$predict<- predict(glm3,Q4_val_16,type = "response")
+Q4_val_17$predict<- predict(glm3,Q4_val_17,type = "response")
+Q4_val_18$predict<- predict(glm3,Q4_val_18,type = "response")
+Q4_val_19$predict<- predict(glm3,Q4_val_19,type = "response")
+Q4_val_20$predict<- predict(glm3,Q4_val_20,type = "response")
+
+d1<-sum(Q4_val_1$predict)
+d2<-sum(Q4_val_2$predict)
+d3<-sum(Q4_val_3$predict)
+d4<-sum(Q4_val_4$predict)
+d5<-sum(Q4_val_5$predict)
+d6<-sum(Q4_val_6$predict)
+d7<-sum(Q4_val_7$predict)
+d8<-sum(Q4_val_8$predict)
+d9<-sum(Q4_val_9$predict)
+d10<-sum(Q4_val_10$predict)
+d11<-sum(Q4_val_11$predict)
+d12<-sum(Q4_val_12$predict)
+d13<-sum(Q4_val_13$predict)
+d14<-sum(Q4_val_14$predict)
+d15<-sum(Q4_val_15$predict)
+d16<-sum(Q4_val_16$predict)
+d17<-sum(Q4_val_17$predict)
+d18<-sum(Q4_val_18$predict)
+d19<-sum(Q4_val_19$predict)
+d20<-sum(Q4_val_20$predict)
+
+group <- c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20)
+value <- c(d1, 
+          d2,
+          d3, 
+          d4,
+          d5, 
+          d6,
+          d7, 
+          d8,
+          d9, 
+          d10,
+          d11, 
+          d12,
+          d13, 
+          d14,
+          d15,
+          d16,
+          d17,
+          d18,
+          d19,
+          d20)
+type <- c("Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted",
+          "Predicted")
+
+df1 <- data.frame(group, value,type)
+
+value <- c(19,22,19,22,20,18,23,16,27,14,17,15,17,23,25,26,18,19,23,19)
+type <- c("Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual","Actual")
+
+df2 <- data.frame(group, value,type)
+
+df <- rbind(df1, df2)
+
+ggplot(data=df, aes(x=group, y=value, fill=type)) +
+  geom_bar(stat="identity", color="black", position=position_dodge())+
+  theme_minimal()
+```
+Figure 4-2. Predicted number (Green) vs. Actual number (Red)
+
+## Appendix
+### For QUESTION 2
+I separately test the performance of the linear model and KNN regression. The RMSEE is the index to quantify performances. In the linear models, I first covert six categorical variables (heating, fuel, sewer, waterfrnont, newConstruction, and centralAir) into factor variables. Then, I modify the portion of test and train data, and find that 0.7 is the best. 
+I apply two linear models. The first linear model (price ~ lotSize + bedrooms + bathrooms) performances fine (RMSE= 80153.51), and the second linear model (full models) performance better (RMSE= 62303.69). Afterwards, I apply Stepwise to find out the best combination as the third linear model. The result presents, price that when independent variables include livingArea, landValue, bathrooms, waterfront, newConstruction, heating, lotSize, centralAir, age, bedrooms, and rooms, the model performance better (RMSE= 61870.59). Then, I modify the model of Stepwise, introducing the **(livingArea + landValue)^2**, the model performance better (RMSE= 61715.89). Besides, I also tried log-transformations, polynomial terms, and different interactions, but this the last model (price ~ (livingArea + landValue)^2 + waterfront + bathrooms + newConstruction + centralAir + age + lotSize + rooms + heating + bedrooms) is the best.
+
+### For QUESTION 4
+```{r Q4 APPENDIX, echo=FALSE,message=FALSE,warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(caret) 
+library(MASS)
+library(pROC)
+library(caret)
+library(Metrics)
+library(ROCR)
+library(pander)
+
+Q4_dev <- read_excel("C:/Users/cheny/Desktop/UIL 2021 Spring/ECO395M/A2/hotels_dev.xlsx")
+
+Q4_dev$children=factor(Q4_dev$children)
+Q4_dev$is_repeated_guest=factor(Q4_dev$is_repeated_guest)
+
+Q4_dev_split = initial_split(Q4_dev, prop = 0.9)
+Q4_dev_train = training(Q4_dev_split)
+Q4_dev_test = testing(Q4_dev_split)
+
+glm1 = glm(children ~ market_segment + adults +customer_type
+           +is_repeated_guest,family=binomial(), data=Q4_dev_train)
+glm2 = glm(children ~. -arrival_date, family=binomial(),data=Q4_dev_train)
+
+glm3 = glm(children ~ 
+             reserved_room_type:meal + average_daily_rate + 
+             poly(total_of_special_requests,2) + assigned_room_type + market_segment + 
+             hotel +  poly(adults,3) + booking_changes + customer_type + 
+             previous_bookings_not_canceled + poly(lead_time,3) + distribution_channel + 
+             is_repeated_guest + poly(stays_in_weekend_nights,3) +
+             required_car_parking_spaces +
+             poly(days_in_waiting_list,3),family=binomial(), data=Q4_dev_train)
+
+log_predict1 <- predict(glm1,newdata = Q4_dev_test,type = "response") #0.661
+log_predict2 <- predict(glm2,newdata = Q4_dev_test,type = "response") #0.847
+log_predict3 <- predict(glm3,newdata = Q4_dev_test,type = "response") #0.864
+
+pander(summary(glm3))
+
+```
